@@ -4,14 +4,17 @@ const cors = require("cors");
 const fs = require("fs");
 const path = require("path");
 const pdfParse = require("pdf-parse");
-const { cleanText, chunkText } = require("./src/utils/textProcessor");
+
+const { cleanText, smartChunk } = require("./src/utils/textProcessor");
+const { extractRequirements } = require("./src/services/requirementExtractor");
+
 const app = express();
 app.use(cors());
 
-// 📁 Configure storage
+// storage config
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, path.join(__dirname, "uploads")); // folder where files will be stored
+    cb(null, path.join(__dirname, "uploads"));
   },
   filename: function (req, file, cb) {
     const uniqueName = Date.now() + path.extname(file.originalname);
@@ -21,12 +24,8 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage: storage });
 
-// 🚀 Upload route
 app.post("/upload", upload.any(), async (req, res) => {
   try {
-    console.log("FILES:", req.files);
-    console.log("BODY:", req.body);
-
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ message: "No file uploaded" });
     }
@@ -37,14 +36,20 @@ app.post("/upload", upload.any(), async (req, res) => {
     const data = await pdfParse(dataBuffer);
 
     const cleanedText = cleanText(data.text);
-    const chunks = smartChunk(cleanedText); // smaller chunks for now
 
-   res.json({
-    message: "File processed successfully",
-    totalChunks: chunks.length,
-    sampleChunk: chunks[0],
-    lastChunk: chunks[chunks.length - 1],
-   });
+    // ✅ use smart chunking
+    const chunks = smartChunk(cleanedText);
+
+    // ✅ extract requirements
+    const requirements = extractRequirements(chunks);
+
+    // ✅ single response
+    res.json({
+      message: "Processing successful",
+      totalChunks: chunks.length,
+      totalRequirements: requirements.length,
+      sampleRequirement: requirements.slice(0, 5),
+    });
 
   } catch (error) {
     console.error(error);
@@ -52,7 +57,6 @@ app.post("/upload", upload.any(), async (req, res) => {
   }
 });
 
-// 🌐 Start server
 const PORT = 5000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
